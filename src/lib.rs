@@ -170,8 +170,8 @@ use models::{AppId, InstallationId, InstallationToken};
 
 pub use self::{
     api::{
-        actions, activity, apps, current, events, gists, gitignore, issues, licenses, markdown,
-        orgs, pulls, repos, search, teams, workflows,
+        actions, activity, apps, current, events, gists, gitignore, issues, licenses, markdown, orgs, pulls, repos,
+        search, teams, workflows,
     },
     error::{Error, GitHubError},
     from_response::FromResponse,
@@ -219,10 +219,7 @@ pub async fn map_github_error(response: reqwest::Response) -> Result<reqwest::Re
         Ok(response)
     } else {
         Err(error::Error::GitHub {
-            source: response
-                .json::<error::GitHubError>()
-                .await
-                .context(error::HttpSnafu)?,
+            source: response.json::<error::GitHubError>().await.context(error::HttpSnafu)?,
             backtrace: Backtrace::generate(),
         })
     }
@@ -247,6 +244,11 @@ pub fn initialise(builder: OctocrabBuilder) -> Result<Arc<Octocrab>> {
 /// ```
 pub fn instance() -> Arc<Octocrab> {
     STATIC_INSTANCE.load().clone()
+}
+
+/// Overrides the static instance of [`Octocrab`] without using a builder.
+pub fn set_instance(instance: Octocrab) -> Arc<Octocrab> {
+    STATIC_INSTANCE.swap(Arc::from(instance))
 }
 
 /// A builder struct for `Octocrab`, allowing you to configure the client, such
@@ -309,19 +311,13 @@ impl OctocrabBuilder {
         let mut hmap = reqwest::header::HeaderMap::new();
 
         for preview in &self.previews {
-            hmap.append(
-                reqwest::header::ACCEPT,
-                crate::format_preview(&preview).parse().unwrap(),
-            );
+            hmap.append(reqwest::header::ACCEPT, crate::format_preview(&preview).parse().unwrap());
         }
 
         let auth_state = match self.auth {
             Auth::None => AuthState::None,
             Auth::PersonalToken(token) => {
-                hmap.append(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Bearer {}", token).parse().unwrap(),
-                );
+                hmap.append(reqwest::header::AUTHORIZATION, format!("Bearer {}", token).parse().unwrap());
                 AuthState::None
             }
             Auth::App(app_auth) => AuthState::App(app_auth),
@@ -339,9 +335,7 @@ impl OctocrabBuilder {
 
         Ok(Octocrab {
             client,
-            base_url: self
-                .base_url
-                .unwrap_or_else(|| Url::parse(GITHUB_BASE_URL).unwrap()),
+            base_url: self.base_url.unwrap_or_else(|| Url::parse(GITHUB_BASE_URL).unwrap()),
             auth_state,
         })
     }
@@ -371,10 +365,7 @@ impl fmt::Debug for CachedToken {
 impl fmt::Display for CachedToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let option = self.0.read().unwrap();
-        option
-            .as_ref()
-            .map(|s| s.fmt(f))
-            .unwrap_or_else(|| write!(f, "<none>"))
+        option.as_ref().map(|s| s.fmt(f)).unwrap_or_else(|| write!(f, "<none>"))
     }
 }
 
@@ -425,10 +416,7 @@ impl Default for Octocrab {
     fn default() -> Self {
         Self {
             base_url: Url::parse(GITHUB_BASE_URL).unwrap(),
-            client: reqwest::ClientBuilder::new()
-                .user_agent("octocrab")
-                .build()
-                .unwrap(),
+            client: reqwest::ClientBuilder::new().user_agent("octocrab").build().unwrap(),
             auth_state: AuthState::None,
         }
     }
@@ -498,11 +486,7 @@ impl Octocrab {
 
     /// Creates a [`issues::IssueHandler`] for the repo specified at `owner/repo`,
     /// that allows you to access GitHub's issues API.
-    pub fn issues(
-        &self,
-        owner: impl Into<String>,
-        repo: impl Into<String>,
-    ) -> issues::IssueHandler {
+    pub fn issues(&self, owner: impl Into<String>, repo: impl Into<String>) -> issues::IssueHandler {
         issues::IssueHandler::new(self, owner.into(), repo.into())
     }
 
@@ -524,11 +508,7 @@ impl Octocrab {
 
     /// Creates a [`pulls::PullRequestHandler`] for the repo specified at
     /// `owner/repo`, that allows you to access GitHub's pull request API.
-    pub fn pulls(
-        &self,
-        owner: impl Into<String>,
-        repo: impl Into<String>,
-    ) -> pulls::PullRequestHandler {
+    pub fn pulls(&self, owner: impl Into<String>, repo: impl Into<String>) -> pulls::PullRequestHandler {
         pulls::PullRequestHandler::new(self, owner.into(), repo.into())
     }
 
@@ -552,11 +532,7 @@ impl Octocrab {
 
     /// Creates a [`workflows::WorkflowsHandler`] for the specified repository that allows
     /// you to access GitHub's workflows API.
-    pub fn workflows(
-        &self,
-        owner: impl Into<String>,
-        repo: impl Into<String>,
-    ) -> workflows::WorkflowsHandler {
+    pub fn workflows(&self, owner: impl Into<String>, repo: impl Into<String>) -> workflows::WorkflowsHandler {
         workflows::WorkflowsHandler::new(self, owner.into(), repo.into())
     }
 
@@ -585,10 +561,7 @@ impl Octocrab {
     ///# Ok(())
     ///# }
     /// ```
-    pub async fn graphql<R: crate::FromResponse>(
-        &self,
-        body: &(impl serde::Serialize + ?Sized),
-    ) -> crate::Result<R> {
+    pub async fn graphql<R: crate::FromResponse>(&self, body: &(impl serde::Serialize + ?Sized)) -> crate::Result<R> {
         self.post(
             "graphql",
             Some(&serde_json::json!({
@@ -758,11 +731,7 @@ impl Octocrab {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn request_builder(
-        &self,
-        url: impl reqwest::IntoUrl,
-        method: reqwest::Method,
-    ) -> reqwest::RequestBuilder {
+    pub fn request_builder(&self, url: impl reqwest::IntoUrl, method: reqwest::Method) -> reqwest::RequestBuilder {
         self.client.request(method, url)
     }
 
@@ -780,15 +749,12 @@ impl Octocrab {
         };
         let mut retries = 0;
         loop {
-            let result =
-                self.client
-                    .post(self.absolute_url(format!(
-                        "app/installations/{}/access_tokens",
-                        installation
-                    ))?)
-                    .bearer_auth(app.generate_bearer_token()?)
-                    .send()
-                    .await;
+            let result = self
+                .client
+                .post(self.absolute_url(format!("app/installations/{}/access_tokens", installation))?)
+                .bearer_auth(app.generate_bearer_token()?)
+                .send()
+                .await;
             if let Err(ref e) = result {
                 if let Some(StatusCode::UNAUTHORIZED) = e.status() {
                     if retries < MAX_RETRIES {
@@ -798,8 +764,7 @@ impl Octocrab {
                 }
             }
             let response = result.context(error::HttpSnafu)?;
-            let token_object =
-                InstallationToken::from_response(crate::map_github_error(response).await?).await?;
+            let token_object = InstallationToken::from_response(crate::map_github_error(response).await?).await?;
             token.set(token_object.token.clone());
             return Ok(token_object.token);
         }
@@ -857,10 +822,7 @@ impl Octocrab {
     }
 
     /// A convenience method to get a page of results (if present).
-    pub async fn get_page<R: serde::de::DeserializeOwned>(
-        &self,
-        url: &Option<Url>,
-    ) -> crate::Result<Option<Page<R>>> {
+    pub async fn get_page<R: serde::de::DeserializeOwned>(&self, url: &Option<Url>) -> crate::Result<Option<Page<R>>> {
         match url {
             Some(url) => self.get(url, None::<&()>).await.map(Some),
             None => Ok(None),
@@ -869,10 +831,7 @@ impl Octocrab {
 
     /// A convenience method to get all the results starting at a given
     /// page.
-    pub async fn all_pages<R: serde::de::DeserializeOwned>(
-        &self,
-        mut page: Page<R>,
-    ) -> crate::Result<Vec<R>> {
+    pub async fn all_pages<R: serde::de::DeserializeOwned>(&self, mut page: Page<R>) -> crate::Result<Vec<R>> {
         let mut ret = page.take_items();
         while let Some(mut next_page) = self.get_page(&page.next).await? {
             ret.append(&mut next_page.take_items());
@@ -887,10 +846,7 @@ mod tests {
     #[test]
     fn absolute_url_escapes() {
         assert_eq!(
-            crate::instance()
-                .absolute_url("/help wanted")
-                .unwrap()
-                .as_str(),
+            crate::instance().absolute_url("/help wanted").unwrap().as_str(),
             String::from(crate::GITHUB_BASE_URL) + "/help%20wanted"
         );
     }
